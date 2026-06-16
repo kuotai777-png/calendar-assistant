@@ -1,30 +1,52 @@
 import { messagingApi } from "@line/bot-sdk";
 import { parseSchedule } from "../utils/parser.js";
 
-const client = new messagingApi.MessagingApiClient({
-  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN
-});
+
+const client =
+  new messagingApi.MessagingApiClient({
+
+    channelAccessToken:
+      process.env.LINE_CHANNEL_ACCESS_TOKEN
+
+  });
 
 
-export default async function handler(req, res) {
 
-  if (req.method !== "POST") {
-    res.status(200).send("Calendar Assistant Running");
+export default async function handler(req,res){
+
+
+  if(req.method !== "POST"){
+
+    res.status(200)
+       .send(
+        "Calendar Assistant Running"
+       );
+
     return;
+
   }
 
 
-  try {
 
-    const events = req.body.events || [];
+  try{
 
 
-    for (const event of events) {
+    const events =
+      req.body.events || [];
 
-      if (
-        event.type === "message" &&
+
+
+    for(
+      const event of events
+    ){
+
+
+      if(
+        event.type === "message"
+        &&
         event.message.type === "text"
-      ) {
+      ){
+
 
         const result =
           parseSchedule(
@@ -32,41 +54,58 @@ export default async function handler(req, res) {
           );
 
 
+
         const response =
           await fetch(
+
             process.env.CALENDAR_API_URL,
+
             {
-              method: "POST",
-              body: JSON.stringify({
-                title: result.title,
-                start:
-                  new Date().toISOString()
-              })
+
+              method:"POST",
+
+              body:
+                JSON.stringify({
+
+                  title:
+                    result.title,
+
+                  start:
+                    result.start
+
+                })
+
             }
+
           );
 
 
-        const calendarResult =
+
+        const calendar =
           await response.json();
+
 
 
         let reply = "";
 
 
-        if (
-          calendarResult.status ===
+        if(
+          calendar.status
+          ===
           "conflict"
-        ) {
+        ){
 
           reply =
-            "時間衝突\n\n" +
-            "已有：" +
-            calendarResult.event;
+            "時間衝突\n\n"+
+            "已有："+
+            calendar.event;
 
-        } else {
+
+        }else{
+
 
           reply =
-            "已新增行程\n\n" +
+            "已新增行程\n\n"+
             "日期：" +
             result.date +
             "\n時間：" +
@@ -74,40 +113,59 @@ export default async function handler(req, res) {
             "\n事項：" +
             result.title;
 
+
         }
 
 
+
         await client.replyMessage({
+
           replyToken:
             event.replyToken,
 
-          messages: [
+          messages:[
             {
-              type: "text",
-              text: reply
+
+              type:"text",
+
+              text:reply
+
             }
           ]
+
         });
 
+
       }
+
 
     }
 
 
-    res.status(200).json({
-      status: "ok"
-    });
+
+    res.status(200)
+       .json({
+          status:"ok"
+       });
 
 
-  } catch (error) {
+
+  }catch(error){
+
 
     console.log(error);
 
-    res.status(500).json({
-      error:
-        error.message
-    });
+
+    res.status(500)
+       .json({
+
+        error:
+          error.message
+
+       });
+
 
   }
+
 
 }
