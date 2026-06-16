@@ -189,10 +189,8 @@ export default async function handler(req,res){
           ){
 
 
-            reply =
-              "時間衝突\n\n"+
-              "已有："+
-              calendar.event;
+           reply =
+  calendar.message;
 
 
           }else{
