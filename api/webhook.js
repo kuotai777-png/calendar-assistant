@@ -7,9 +7,8 @@ const client = new messagingApi.MessagingApiClient({
 export default async function handler(req, res) {
 
   if (req.method !== "POST") {
-    return res.status(200).send(
-      "Calendar Assistant Running"
-    );
+    res.status(200).send("Calendar Assistant Running");
+    return;
   }
 
   try {
@@ -29,7 +28,7 @@ export default async function handler(req, res) {
             {
               type: "text",
               text:
-                "Calendar Assistant 已收到 👍\n\n" +
+                "Calendar Assistant OK\n" +
                 event.message.text
             }
           ]
@@ -38,16 +37,17 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({
+    res.status(200).json({
       status: "ok"
     });
 
-  } catch (err) {
+  } catch (error) {
 
-    console.error(err);
+    console.log(error);
 
-    return res.status(500).json({
-      error: err.message
+    res.status(500).json({
+      error: error.message
     });
+
   }
 }
