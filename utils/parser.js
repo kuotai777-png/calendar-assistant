@@ -98,18 +98,26 @@ export function parseSchedule(text) {
 
   return {
 
-    title:
-      title.trim(),
+  title:
+    title.trim(),
 
-    date:
-      dateText,
+  date:
+    dateText,
 
-    time:
-      timeText,
+  time:
+    timeText,
 
-    start:
-      start.toISOString()
+  start:
+    start.getFullYear() +
+    "-" +
+    String(start.getMonth()+1).padStart(2,"0") +
+    "-" +
+    String(start.getDate()).padStart(2,"0") +
+    "T" +
+    String(start.getHours()).padStart(2,"0") +
+    ":00:00+08:00"
 
+};
   };
 
 }
