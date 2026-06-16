@@ -15,10 +15,7 @@ export default async function handler(req, res) {
     const events = req.body.events || [];
 
     for (const event of events) {
-      if (
-        event.type === "message" &&
-        event.message.type === "text"
-      ) {
+      if (event.type === "message" && event.message.type === "text") {
         const result = parseSchedule(event.message.text);
 
         await client.replyMessage({
@@ -37,14 +34,9 @@ export default async function handler(req, res) {
       }
     }
 
-    res.status(200).json({
-      status: "ok"
-    });
+    res.status(200).json({ status: "ok" });
   } catch (error) {
     console.log(error);
-
-    res.status(500).json({
-      error: error.message
-    });
+    res.status(500).json({ error: error.message });
   }
 }
