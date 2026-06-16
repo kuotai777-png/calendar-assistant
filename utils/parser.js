@@ -5,7 +5,7 @@ export function parseSchedule(text) {
   let dayOffset = 0;
 
 
-  // 日期判斷
+  // 判斷日期
 
   if (text.includes("明天")) {
     dayOffset = 1;
@@ -23,25 +23,27 @@ export function parseSchedule(text) {
   }
 
 
-  // 時間判斷
+  // 判斷時間
 
-  const match =
+  const timeMatch =
     text.match(
       /(上午|早上|下午|晚上)(\d+)點/
     );
 
 
-  if (match) {
+  if (timeMatch) {
 
     hour =
-      Number(match[2]);
+      Number(timeMatch[2]);
 
 
     if (
-      (match[1] === "下午" ||
-       match[1] === "晚上")
-       &&
-       hour < 12
+      (
+        timeMatch[1] === "下午" ||
+        timeMatch[1] === "晚上"
+      )
+      &&
+      hour < 12
     ) {
 
       hour += 12;
@@ -51,14 +53,14 @@ export function parseSchedule(text) {
 
     title =
       title.replace(
-        match[0],
+        timeMatch[0],
         ""
       );
 
   }
 
 
-  // 建立真正日期
+  // 建立日期物件
 
   const start =
     new Date();
@@ -79,15 +81,23 @@ export function parseSchedule(text) {
   );
 
 
+  // 顯示日期
+
   const dateText =
     start.getFullYear()
     +
     "/" +
-    (start.getMonth()+1)
+    String(
+      start.getMonth()+1
+    ).padStart(2,"0")
     +
     "/" +
-    start.getDate();
+    String(
+      start.getDate()
+    ).padStart(2,"0");
 
+
+  // 顯示時間
 
   const timeText =
     String(hour)
@@ -96,28 +106,43 @@ export function parseSchedule(text) {
     ":00";
 
 
+  // 給 Google Calendar 的時間
+  // 固定台灣時區 +08:00
+
+  const calendarTime =
+    start.getFullYear()
+    +
+    "-" +
+    String(
+      start.getMonth()+1
+    ).padStart(2,"0")
+    +
+    "-" +
+    String(
+      start.getDate()
+    ).padStart(2,"0")
+    +
+    "T" +
+    String(hour)
+      .padStart(2,"0")
+    +
+    ":00:00+08:00";
+
+
   return {
 
-  title:
-    title.trim(),
+    title:
+      title.trim(),
 
-  date:
-    dateText,
+    date:
+      dateText,
 
-  time:
-    timeText,
+    time:
+      timeText,
 
-  start:
-    start.getFullYear() +
-    "-" +
-    String(start.getMonth()+1).padStart(2,"0") +
-    "-" +
-    String(start.getDate()).padStart(2,"0") +
-    "T" +
-    String(start.getHours()).padStart(2,"0") +
-    ":00:00+08:00"
+    start:
+      calendarTime
 
-};
   };
 
 }
