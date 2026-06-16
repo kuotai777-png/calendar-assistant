@@ -48,70 +48,167 @@ export default async function handler(req,res){
       ){
 
 
+        const text =
+          event.message.text;
+
+
         const result =
-          parseSchedule(
-            event.message.text
-          );
-
-
-
-        const response =
-          await fetch(
-
-            process.env.CALENDAR_API_URL,
-
-            {
-
-              method:"POST",
-
-              body:
-                JSON.stringify({
-
-                  title:
-                    result.title,
-
-                  start:
-                    result.start
-
-                })
-
-            }
-
-          );
-
-
-
-        const calendar =
-          await response.json();
+          parseSchedule(text);
 
 
 
         let reply = "";
 
 
+
+        // ===================
+        // 查詢模式
+        // ===================
+
+
         if(
-          calendar.status
-          ===
-          "conflict"
+          text.includes("行程")
+          &&
+          (
+            text.includes("今天")
+            ||
+            text.includes("明天")
+            ||
+            text.includes("後天")
+          )
         ){
 
-          reply =
-            "時間衝突\n\n"+
-            "已有："+
-            calendar.event;
+
+          const response =
+            await fetch(
+
+              process.env.CALENDAR_API_URL,
+
+              {
+
+                method:"POST",
+
+                body:
+                  JSON.stringify({
+
+                    action:"list",
+
+                    start:
+                      result.start
+
+                  })
+
+              }
+
+            );
 
 
-        }else{
+          const data =
+            await response.json();
 
 
-          reply =
-            "已新增行程\n\n"+
-            "日期：" +
-            result.date +
-            "\n時間：" +
-            result.time +
-            "\n事項：" +
-            result.title;
+
+          if(
+            data.events.length === 0
+          ){
+
+            reply =
+              "沒有行程";
+
+          }else{
+
+
+            reply =
+              "行程列表\n\n";
+
+
+            data.events.forEach(
+              item=>{
+
+                reply +=
+
+                  item.no +
+                  ". " +
+                  item.time +
+                  " " +
+                  item.title +
+                  "\n";
+
+              }
+            );
+
+
+          }
+
+
+
+        }
+
+
+        // ===================
+        // 新增模式
+        // ===================
+
+        else{
+
+
+          const response =
+            await fetch(
+
+              process.env.CALENDAR_API_URL,
+
+              {
+
+                method:"POST",
+
+                body:
+                  JSON.stringify({
+
+                    title:
+                      result.title,
+
+                    start:
+                      result.start
+
+                  })
+
+              }
+
+            );
+
+
+          const calendar =
+            await response.json();
+
+
+
+          if(
+            calendar.status
+            ===
+            "conflict"
+          ){
+
+
+            reply =
+              "時間衝突\n\n"+
+              "已有："+
+              calendar.event;
+
+
+          }else{
+
+
+            reply =
+              "已新增行程\n\n"+
+              "日期：" +
+              result.date +
+              "\n時間：" +
+              result.time +
+              "\n事項：" +
+              result.title;
+
+
+          }
 
 
         }
@@ -125,11 +222,8 @@ export default async function handler(req,res){
 
           messages:[
             {
-
               type:"text",
-
               text:reply
-
             }
           ]
 
