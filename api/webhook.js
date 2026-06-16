@@ -1,263 +1,173 @@
-import { messagingApi } from "@line/bot-sdk";
 import { parseSchedule } from "../utils/parser.js";
 
+const LINE_ACCESS_TOKEN =
+  process.env.LINE_CHANNEL_ACCESS_TOKEN ||
+  process.env.CHANNEL_ACCESS_TOKEN;
 
-const client =
-  new messagingApi.MessagingApiClient({
+const CALENDAR_API_URL =
+  process.env.CALENDAR_API_URL;
 
-    channelAccessToken:
-      process.env.LINE_CHANNEL_ACCESS_TOKEN
-
-  });
-
-
-
-export default async function handler(req,res){
-
-
-  if(req.method !== "POST"){
-
-    res.status(200)
-       .send(
-        "Calendar Assistant Running"
-       );
-
-    return;
-
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(200).send("OK");
   }
 
+  try {
+    const body = req.body;
+    const events = body.events || [];
 
+    for (const event of events) {
+      if (event.type !== "message") continue;
+      if (event.message.type !== "text") continue;
 
-  try{
+      const userText = event.message.text.trim();
 
+      console.log("LINE 收到訊息：", userText);
 
-    const events =
-      req.body.events || [];
+      let replyText = "";
 
-
-
-    for(
-      const event of events
-    ){
-
-
-      if(
-        event.type === "message"
-        &&
-        event.message.type === "text"
-      ){
-
-
-        const text =
-          event.message.text;
-
-
-        const result =
-          parseSchedule(text);
-
-
-
-        let reply = "";
-
-
-
-        // ===================
-        // 查詢模式
-        // ===================
-
-
-        if(
-          text.includes("行程")
-          &&
-          (
-            text.includes("今天")
-            ||
-            text.includes("明天")
-            ||
-            text.includes("後天")
-          )
-        ){
-
-
-          const response =
-            await fetch(
-
-              process.env.CALENDAR_API_URL,
-
-              {
-
-                method:"POST",
-
-                body:
-                  JSON.stringify({
-
-                    action:"list",
-
-                    start:
-                      result.start
-
-                  })
-
-              }
-
-            );
-
-
-          const data =
-            await response.json();
-
-
-
-          if(
-            data.events.length === 0
-          ){
-
-            reply =
-              "沒有行程";
-
-          }else{
-
-
-            reply =
-              "行程列表\n\n";
-
-
-            data.events.forEach(
-              item=>{
-
-                reply +=
-
-                  item.no +
-                  ". " +
-                  item.time +
-                  " " +
-                  item.title +
-                  "\n";
-
-              }
-            );
-
-
-          }
-
-
-
-        }
-
-
-        // ===================
-        // 新增模式
-        // ===================
-
-        else{
-
-
-          const response =
-            await fetch(
-
-              process.env.CALENDAR_API_URL,
-
-              {
-
-                method:"POST",
-
-                body:
-                  JSON.stringify({
-
-                    title:
-                      result.title,
-
-                    start:
-                      result.start
-
-                  })
-
-              }
-
-            );
-
-
-          const calendar =
-            await response.json();
-
-
-
-          if(
-            calendar.status
-            ===
-            "conflict"
-          ){
-
-
-           reply =
-  calendar.message;
-
-
-          }else{
-
-
-            reply =
-              "已新增行程\n\n"+
-              "日期：" +
-              result.date +
-              "\n時間：" +
-              result.time +
-              "\n事項：" +
-              result.title;
-
-
-          }
-
-
-        }
-
-
-
-        await client.replyMessage({
-
-          replyToken:
-            event.replyToken,
-
-          messages:[
-            {
-              type:"text",
-              text:reply
-            }
-          ]
-
-        });
-
-
+      if (isQueryText(userText)) {
+        replyText = await handleQuery(userText);
+      } else {
+        replyText = await handleAdd(userText);
       }
 
-
+      await replyToLine(event.replyToken, replyText);
     }
 
+    return res.status(200).json({ ok: true });
 
+  } catch (err) {
+    console.error("Webhook error:", err);
 
-    res.status(200)
-       .json({
-          status:"ok"
-       });
+    return res.status(200).json({
+      ok: false,
+      error: err.message
+    });
+  }
+}
 
+function isQueryText(text) {
+  return (
+    text.includes("查詢") ||
+    text.includes("看行程") ||
+    text.includes("今天行程") ||
+    text.includes("明天行程")
+  );
+}
 
+async function handleQuery(text) {
+  let target = "today";
 
-  }catch(error){
-
-
-    console.log(error);
-
-
-    res.status(500)
-       .json({
-
-        error:
-          error.message
-
-       });
-
-
+  if (text.includes("明天")) {
+    target = "tomorrow";
   }
 
+  const calendar = await callCalendarApi({
+    action: "query",
+    target
+  });
 
+  return calendar.message || "查詢完成";
+}
+
+async function handleAdd(text) {
+  const parsed = parseSchedule(text);
+
+  if (!parsed || !parsed.start || !parsed.end) {
+    return "我看不懂這個行程時間，請試試：今天下午3點 開會";
+  }
+
+  const calendar = await callCalendarApi({
+    action: "add",
+    title: parsed.title || "未命名行程",
+    start: parsed.start,
+    end: parsed.end
+  });
+
+  if (calendar.success === false) {
+    return calendar.message || "新增失敗";
+  }
+
+  const startDate = new Date(parsed.start);
+
+  const dateText = formatDate(startDate);
+  const timeText = formatTime(startDate);
+
+  return (
+    "已新增行程\n\n" +
+    "日期：" + dateText + "\n" +
+    "時間：" + timeText + "\n" +
+    "事項：" + (parsed.title || "未命名行程")
+  );
+}
+
+async function callCalendarApi(payload) {
+  if (!CALENDAR_API_URL) {
+    return {
+      success: false,
+      message: "CALENDAR_API_URL 尚未設定"
+    };
+  }
+
+  const response = await fetch(CALENDAR_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const text = await response.text();
+
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    console.error("Apps Script 回傳不是 JSON：", text);
+    return {
+      success: false,
+      message: "Apps Script 回傳格式錯誤"
+    };
+  }
+}
+
+async function replyToLine(replyToken, text) {
+  const safeText = text || "已完成";
+
+  const response = await fetch("https://api.line.me/v2/bot/message/reply", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + LINE_ACCESS_TOKEN
+    },
+    body: JSON.stringify({
+      replyToken,
+      messages: [
+        {
+          type: "text",
+          text: safeText
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("LINE 回覆失敗：", errorText);
+  }
+}
+
+function formatDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+
+  return `${y}/${m}/${d}`;
+}
+
+function formatTime(date) {
+  const h = String(date.getHours()).padStart(2, "0");
+  const m = String(date.getMinutes()).padStart(2, "0");
+
+  return `${h}:${m}`;
 }
