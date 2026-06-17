@@ -8,6 +8,10 @@ const CALENDAR_API_URL =
   process.env.CALENDAR_API_URL;
 
 
+//=====================
+// 主入口
+//=====================
+
 export default async function handler(req, res) {
 
   if (req.method !== "POST") {
@@ -17,8 +21,8 @@ export default async function handler(req, res) {
 
   try {
 
-    const body = req.body;
-    const events = body.events || [];
+    const events =
+      req.body.events || [];
 
 
     for (const event of events) {
@@ -27,49 +31,61 @@ export default async function handler(req, res) {
       if (event.message.type !== "text") continue;
 
 
-      const userText =
+      const text =
         event.message.text.trim();
 
 
       console.log(
-        "LINE 收到訊息:",
-        userText
+        "LINE 收到:",
+        text
       );
 
 
-      let replyText = "";
+      let reply;
 
 
-      // 查詢
-      if (isQueryText(userText)) {
+      //查詢
+      if (isQuery(text)) {
 
-        replyText =
-          await handleQuery(userText);
+        reply =
+          await query(text);
 
       }
 
-      // 刪除
+      //刪除
       else if (
-        userText.startsWith("刪除")
+        text.startsWith("刪除")
       ) {
 
-        replyText =
-          await handleDelete(userText);
+        reply =
+          await remove(text);
 
       }
 
-      // 新增
+      //修改
+      else if (
+        text.startsWith("把") &&
+        text.includes("改成")
+      ) {
+
+        reply =
+          await update(text);
+
+      }
+
+
+      //新增
       else {
 
-        replyText =
-          await handleAdd(userText);
+        reply =
+          await add(text);
 
       }
 
 
-      await replyToLine(
+      await replyLine(
         event.replyToken,
-        replyText
+        reply
       );
 
     }
@@ -80,13 +96,12 @@ export default async function handler(req, res) {
     });
 
 
-  } catch(err){
+  }catch(e){
 
-    console.error(err);
+    console.error(e);
 
     return res.status(200).json({
-      ok:false,
-      error:err.message
+      error:e.message
     });
 
   }
@@ -94,25 +109,25 @@ export default async function handler(req, res) {
 }
 
 
-//====================
-// 判斷查詢
-//====================
+//=====================
+// 查詢判斷
+//=====================
 
-function isQueryText(text){
+function isQuery(text){
 
  return (
-   text.includes("查詢") ||
-   text.includes("看行程")
+  text.includes("查詢") ||
+  text.includes("看行程")
  );
 
 }
 
 
-//====================
+//=====================
 // 查詢
-//====================
+//=====================
 
-async function handleQuery(text){
+async function query(text){
 
  let target="today";
 
@@ -123,170 +138,169 @@ async function handleQuery(text){
 
 
  if(
-   text.includes("本週") ||
-   text.includes("這週")
+ text.includes("本週") ||
+ text.includes("這週")
  ){
    target="week";
  }
 
 
- const calendar =
- await callCalendarApi({
+ const r =
+ await api({
 
-   action:"query",
-   target
+ action:"query",
+ target
+
+ });
+
+
+ return r.message;
+
+}
+
+
+
+//=====================
+// 新增
+//=====================
+
+async function add(text){
+
+ const p =
+ parseSchedule(text);
+
+
+ if(!p){
+
+ return "無法辨識時間";
+
+ }
+
+
+ const r =
+ await api({
+
+ action:"add",
+ title:p.title,
+ start:p.start,
+ end:p.end
 
  });
 
 
  return (
-   calendar.message ||
-   "查詢完成"
+ r.message ||
+ "已新增"
  );
 
 }
 
 
 
-//====================
+//=====================
 // 刪除
-//====================
+//=====================
 
-async function handleDelete(text){
+async function remove(text){
 
 
  const keyword =
  text.replace("刪除","")
-     .trim();
+ .trim();
 
 
- if(!keyword){
+ const r =
+ await api({
 
-   return "請輸入要刪除的行程名稱";
-
- }
-
-
- const calendar =
- await callCalendarApi({
-
-   action:"delete",
-   keyword
+ action:"delete",
+ keyword
 
  });
 
 
- return (
-   calendar.message ||
-   "刪除完成"
- );
+ return r.message;
 
 }
 
 
 
-//====================
-// 新增
-//====================
+//=====================
+// 修改
+//=====================
 
-async function handleAdd(text){
-
-
- const parsed =
- parseSchedule(text);
+async function update(text){
 
 
- if(
-   !parsed ||
-   !parsed.start ||
-   !parsed.end
- ){
+ // 把開會改成下午4點
 
-   return "我看不懂這個行程時間，請試試：今天下午3點 開會";
-
- }
+ const temp =
+ text
+ .replace("把","")
+ .split("改成");
 
 
- const calendar =
- await callCalendarApi({
+ const keyword =
+ temp[0].trim();
 
-   action:"add",
-   title:parsed.title,
-   start:parsed.start,
-   end:parsed.end
+
+ const newTime =
+ temp[1].trim();
+
+
+
+ const r =
+ await api({
+
+ action:"update",
+ keyword,
+ newTime
 
  });
 
 
- if(calendar.success===false){
-
-   return (
-     calendar.message ||
-     "新增失敗"
-   );
-
- }
-
-
- return (
- "已新增行程\n\n"+
- "事項："+parsed.title
- );
+ return r.message;
 
 }
 
 
 
-//====================
-// 呼叫 Apps Script
-//====================
+//=====================
+// Apps Script API
+//=====================
 
-async function callCalendarApi(payload){
+async function api(data){
 
 
- const response =
+ const res =
  await fetch(
-   CALENDAR_API_URL,
-   {
-     method:"POST",
-     headers:{
-       "Content-Type":
-       "application/json"
-     },
-     body:
-     JSON.stringify(payload)
-   }
- );
+ CALENDAR_API_URL,
+ {
+
+ method:"POST",
+
+ headers:{
+ "Content-Type":
+ "application/json"
+ },
+
+ body:
+ JSON.stringify(data)
+
+ });
 
 
- const text =
- await response.text();
-
-
- try{
-
-   return JSON.parse(text);
-
- }catch(e){
-
-   return {
-     success:false,
-     message:
-     "Apps Script 回傳格式錯誤"
-   };
-
- }
+ return await res.json();
 
 }
 
 
 
-//====================
+//=====================
 // LINE 回覆
-//====================
+//=====================
 
-async function replyToLine(
- replyToken,
+async function replyLine(
+ token,
  text
 ){
 
@@ -309,14 +323,16 @@ async function replyToLine(
  },
 
 
- body:JSON.stringify({
+ body:
+ JSON.stringify({
 
- replyToken,
+ replyToken:token,
 
  messages:[
  {
  type:"text",
- text:text || "完成"
+ text:
+ text || "完成"
  }
  ]
 
