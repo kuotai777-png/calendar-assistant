@@ -39,7 +39,6 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error("Webhook error:", err);
-
     return res.status(200).json({
       ok: false,
       error: err.message
@@ -52,7 +51,9 @@ function isQueryText(text) {
     text.includes("查詢") ||
     text.includes("看行程") ||
     text.includes("今天行程") ||
-    text.includes("明天行程")
+    text.includes("明天行程") ||
+    text.includes("本週行程") ||
+    text.includes("這週行程")
   );
 }
 
@@ -61,6 +62,13 @@ async function handleQuery(text) {
 
   if (text.includes("明天")) {
     target = "tomorrow";
+  }
+
+  if (
+    text.includes("本週") ||
+    text.includes("這週")
+  ) {
+    target = "week";
   }
 
   const calendar = await callCalendarApi({
@@ -91,13 +99,10 @@ async function handleAdd(text) {
 
   const startDate = new Date(parsed.start);
 
-  const dateText = formatDate(startDate);
-  const timeText = formatTime(startDate);
-
   return (
     "已新增行程\n\n" +
-    "日期：" + dateText + "\n" +
-    "時間：" + timeText + "\n" +
+    "日期：" + formatDate(startDate) + "\n" +
+    "時間：" + formatTime(startDate) + "\n" +
     "事項：" + (parsed.title || "未命名行程")
   );
 }
