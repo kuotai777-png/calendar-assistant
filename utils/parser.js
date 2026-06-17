@@ -1,148 +1,55 @@
 export function parseSchedule(text) {
+  const now = new Date();
 
-  let title = text;
-  let hour = 9;
-  let dayOffset = 0;
-
-
-  // 判斷日期
+  let date = new Date(now);
 
   if (text.includes("明天")) {
-    dayOffset = 1;
-    title = title.replace("明天", "");
+    date.setDate(date.getDate() + 1);
   }
 
-  if (text.includes("後天")) {
-    dayOffset = 2;
-    title = title.replace("後天", "");
+  let hour = null;
+  let minute = 0;
+
+  const timeMatch = text.match(/(上午|下午|晚上|早上)?\s*(\d{1,2})\s*[點:：]\s*(\d{1,2})?/);
+
+  if (!timeMatch) {
+    return null;
   }
 
-  if (text.includes("今天")) {
-    dayOffset = 0;
-    title = title.replace("今天", "");
+  const period = timeMatch[1] || "";
+  hour = parseInt(timeMatch[2], 10);
+
+  if (timeMatch[3]) {
+    minute = parseInt(timeMatch[3], 10);
   }
 
-
-  // 判斷時間
-
-  const timeMatch =
-    text.match(
-      /(上午|早上|下午|晚上)(\d+)點/
-    );
-
-
-  if (timeMatch) {
-
-    hour =
-      Number(timeMatch[2]);
-
-
-    if (
-      (
-        timeMatch[1] === "下午" ||
-        timeMatch[1] === "晚上"
-      )
-      &&
-      hour < 12
-    ) {
-
-      hour += 12;
-
-    }
-
-
-    title =
-      title.replace(
-        timeMatch[0],
-        ""
-      );
-
+  if ((period === "下午" || period === "晚上") && hour < 12) {
+    hour += 12;
   }
 
+  if ((period === "上午" || period === "早上") && hour === 12) {
+    hour = 0;
+  }
 
-  // 建立日期物件
+  date.setHours(hour, minute, 0, 0);
 
-  const start =
-    new Date();
+  const start = new Date(date);
+  const end = new Date(date);
+  end.setHours(end.getHours() + 1);
 
+  let title = text
+    .replace("今天", "")
+    .replace("明天", "")
+    .replace(timeMatch[0], "")
+    .trim();
 
-  start.setDate(
-    start.getDate()
-    +
-    dayOffset
-  );
-
-
-  start.setHours(
-    hour,
-    0,
-    0,
-    0
-  );
-
-
-  // 顯示日期
-
-  const dateText =
-    start.getFullYear()
-    +
-    "/" +
-    String(
-      start.getMonth()+1
-    ).padStart(2,"0")
-    +
-    "/" +
-    String(
-      start.getDate()
-    ).padStart(2,"0");
-
-
-  // 顯示時間
-
-  const timeText =
-    String(hour)
-      .padStart(2,"0")
-    +
-    ":00";
-
-
-  // 給 Google Calendar 的時間
-  // 固定台灣時區 +08:00
-
-  const calendarTime =
-    start.getFullYear()
-    +
-    "-" +
-    String(
-      start.getMonth()+1
-    ).padStart(2,"0")
-    +
-    "-" +
-    String(
-      start.getDate()
-    ).padStart(2,"0")
-    +
-    "T" +
-    String(hour)
-      .padStart(2,"0")
-    +
-    ":00:00+08:00";
-
+  if (!title) {
+    title = "未命名行程";
+  }
 
   return {
-
-    title:
-      title.trim(),
-
-    date:
-      dateText,
-
-    time:
-      timeText,
-
-    start:
-      calendarTime
-
+    title,
+    start: start.toISOString(),
+    end: end.toISOString()
   };
-
 }
