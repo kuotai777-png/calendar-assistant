@@ -51,10 +51,29 @@ console.log(
 
     let replyText = "";
 
+    // V2.5 專業秘書模式
+if (["今日摘要", "今天摘要", "今日秘書"].includes(userText)) {
+  replyText = await assistantAction("summary_today");
+}
+
+else if (["明天準備", "明日準備", "明天摘要"].includes(userText)) {
+  replyText = await assistantAction("summary_tomorrow");
+}
+
+else if (
+  userText.includes("下午有空") ||
+  userText.includes("下午空檔")
+) {
+  replyText = await assistantAction("free_afternoon");
+}
+
+else if (["早安摘要", "早安"].includes(userText)) {
+  replyText = await assistantAction("morning_today");
+}
     // 查詢
-    if (["今天行程", "查今天", "今日行程"].includes(userText)) {
-      replyText = await queryCalendar("today");
-    }
+   else if (["今天行程", "查今天", "今日行程"].includes(userText)) {
+  replyText = await queryCalendar("today");
+}
 
     else if (["明天行程", "查明天", "明日行程"].includes(userText)) {
       replyText = await queryCalendar("tomorrow");
@@ -218,5 +237,31 @@ async function deleteCalendar(range, keyword) {
   } catch (err) {
     console.error("Delete calendar error:", err);
     return "刪除行程失敗，請檢查 Apps Script。";
+  }
+}
+async function assistantAction(type) {
+  try {
+    const result = await fetch(CALENDAR_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "assistant",
+        type,
+      }),
+    });
+
+    const json = await result.json();
+
+    if (!json.ok) {
+      return `秘書模式失敗：${json.error || "未知錯誤"}`;
+    }
+
+    return json.message;
+
+  } catch (err) {
+    console.error("Assistant action error:", err);
+    return "秘書模式讀取失敗，請檢查 Apps Script。";
   }
 }
