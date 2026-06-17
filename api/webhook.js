@@ -40,7 +40,7 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    const userText = event.message.text.trim();
+const userText = event.message.text.trim();
 
 console.log("LINE 收到：", userText);
 
