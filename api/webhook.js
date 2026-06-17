@@ -41,7 +41,13 @@ export default async function handler(req, res) {
     }
 
     const userText = event.message.text.trim();
-    console.log("LINE 收到：", userText);
+
+console.log("LINE 收到：", userText);
+
+console.log(
+  "LINE_USER_ID：",
+  event.source.userId
+);
 
     let replyText = "";
 
