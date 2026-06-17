@@ -1,240 +1,164 @@
 import { Client } from "@line/bot-sdk";
 import { parseSchedule } from "../utils/parser.js";
 
-const client = new Client({
-  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET,
-});
-
+const LINE_ACCESS_TOKEN = process.env.LINE_ACCESS_TOKEN;
+const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 const CALENDAR_API = process.env.CALENDAR_API_URL;
 
+function checkEnv() {
+  const missing = [];
+  if (!LINE_ACCESS_TOKEN) missing.push("LINE_ACCESS_TOKEN");
+  if (!LINE_CHANNEL_SECRET) missing.push("LINE_CHANNEL_SECRET");
+  if (!CALENDAR_API) missing.push("CALENDAR_API_URL");
+  return missing;
+}
 
-// ==========================
-// 主入口
-// ==========================
 export default async function handler(req, res) {
-
   if (req.method !== "POST") {
-    return res.status(200).send("AI Calendar Bot V1.6");
+    return res.status(200).send("AI Calendar Bot V1.7");
   }
 
-  try {
+  const missingEnv = checkEnv();
+  if (missingEnv.length > 0) {
+    console.error("ENV 缺少：", missingEnv.join(", "));
+    return res.status(200).json({
+      ok: false,
+      error: "ENV missing",
+      missing: missingEnv,
+    });
+  }
 
+  const client = new Client({
+    channelAccessToken: LINE_ACCESS_TOKEN,
+    channelSecret: LINE_CHANNEL_SECRET,
+  });
+
+  try {
     const event = req.body.events?.[0];
 
-    if (!event || event.type !== "message") {
+    if (!event || event.type !== "message" || event.message.type !== "text") {
       return res.status(200).end();
     }
 
-
     const userText = event.message.text.trim();
-
-    console.log("收到:", userText);
-
+    console.log("LINE 收到：", userText);
 
     let replyText = "";
 
-
-    // ==========================
-    // ① 查詢行程優先
-    // ==========================
-
     if (
-      userText.includes("今天行程") ||
-      userText.includes("查今天")
+      userText === "今天行程" ||
+      userText === "查今天" ||
+      userText === "今日行程"
     ) {
-
       replyText = await queryCalendar("today");
-
     }
 
-
     else if (
-      userText.includes("明天行程") ||
-      userText.includes("查明天")
+      userText === "明天行程" ||
+      userText === "查明天" ||
+      userText === "明日行程"
     ) {
-
       replyText = await queryCalendar("tomorrow");
-
     }
-
 
     else if (
-      userText.includes("本週行程") ||
-      userText.includes("這週行程")
+      userText === "本週行程" ||
+      userText === "這週行程" ||
+      userText === "本周行程"
     ) {
-
       replyText = await queryCalendar("week");
-
     }
-
-
-
-    // ==========================
-    // ② 新增行程
-    // ==========================
 
     else {
-
       const data = parseSchedule(userText);
 
-
       if (!data) {
-
         replyText =
-`我還無法判斷時間
-
-你可以輸入：
+`我看不懂這個行程時間，請試試：
 
 今天下午3點 開會
-明天上午10點 看醫生
+明天下午3點 開會
+6/20 上午10點 看醫生
 
-或：
-
+查詢可輸入：
 今天行程
 明天行程`;
-
-      }
-
-
-      else {
-
-
-        const result = await fetch(
-          CALENDAR_API,
-          {
-            method:"POST",
-            headers:{
-              "Content-Type":"application/json"
-            },
-
-            body:JSON.stringify({
-              action:"add",
-              title:data.title,
-              start:data.start,
-              end:data.end
-            })
-
-          }
-        );
-
+      } else {
+        const result = await fetch(CALENDAR_API, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: "add",
+            title: data.title,
+            start: data.start,
+            end: data.end,
+          }),
+        });
 
         const json = await result.json();
 
-
-        if(json.ok){
-
+        if (json.ok) {
           replyText =
 `✅ 已加入行程
 
 ${data.title}
-
 ${data.start}`;
-
-        }else{
-
-          replyText="Google Calendar 新增失敗";
-
+        } else {
+          console.error("Calendar add failed:", json);
+          replyText = "Google Calendar 新增失敗，請檢查 Apps Script。";
         }
-
       }
-
     }
 
-
-
-    // ==========================
-    // LINE 回覆
-    // ==========================
-
-    await client.replyMessage(
-      event.replyToken,
-      {
-        type:"text",
-        text:replyText
-      }
-    );
-
+    await client.replyMessage(event.replyToken, {
+      type: "text",
+      text: replyText,
+    });
 
     return res.status(200).end();
 
-
-
-  } catch(err){
-
-    console.error(err);
-
+  } catch (err) {
+    console.error("Webhook error:", err);
     return res.status(200).end();
-
   }
-
 }
 
-
-
-// ==========================
-// 查詢 Google Calendar
-// ==========================
-
-async function queryCalendar(type){
-
-
-  try{
-
-
-    const result = await fetch(
-      CALENDAR_API,
-      {
-        method:"POST",
-        headers:{
-          "Content-Type":"application/json"
-        },
-
-        body:JSON.stringify({
-          action:"query",
-          range:type
-        })
-
-      }
-    );
-
+async function queryCalendar(range) {
+  try {
+    const result = await fetch(CALENDAR_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "query",
+        range,
+      }),
+    });
 
     const json = await result.json();
 
-
-
-    if(!json.events || json.events.length===0){
-
-      return "目前沒有行程";
-
+    if (!json.ok) {
+      console.error("Calendar query failed:", json);
+      return "Google Calendar 查詢失敗，請檢查 Apps Script。";
     }
 
+    if (!json.events || json.events.length === 0) {
+      return "目前沒有行程";
+    }
 
-    let text="📅 行程如下\n\n";
+    let text = "📅 行程如下\n\n";
 
-
-    json.events.forEach(e=>{
-
-      text +=
-`${e.time}
-${e.title}
-
-`;
-
+    json.events.forEach((e) => {
+      text += `${e.time || ""} ${e.title || ""}\n`;
     });
 
+    return text.trim();
 
-    return text;
-
-
-
-  }catch(e){
-
-    console.log(e);
-
-    return "讀取行程失敗";
-
+  } catch (err) {
+    console.error("Query calendar error:", err);
+    return "讀取行程失敗，請檢查 CALENDAR_API_URL。";
   }
-
-
 }
