@@ -114,12 +114,19 @@ export default async function handler(req, res) {
 
   action:"query",
 
-  range:
-    text.includes("明天")
-    ? "tomorrow"
-    : text.includes("本週")
-    ? "week"
-    : "today"
+ range:
+  text.includes("明天")
+  ? "tomorrow"
+  : text.includes("本週")
+  ? "week"
+  : text.match(/\d{1,2}\/\d{1,2}/)
+  ? "date"
+  : "today",
+
+date:
+  text.match(/\d{1,2}\/\d{1,2}/)
+  ? text.match(/\d{1,2}\/\d{1,2}/)[0]
+  : null
 
 })
 
