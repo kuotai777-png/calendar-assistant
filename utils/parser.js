@@ -213,6 +213,91 @@ export function parseSchedule(text) {
 
 export function parseDelete(text){
 
+  let input = text.trim();
+
+  input = input
+    .replace("刪除","")
+    .replace("删除","")
+    .trim();
+
+  let range = "week";
+  let date = null;
+  let time = null;
+
+  const now = new Date();
+  let year = now.getFullYear();
+  let month = now.getMonth();
+  let day = now.getDate();
+
+  // 日期
+  if(input.includes("今天")){
+    range = "today";
+    input = input.replace("今天","").trim();
+  }
+  else if(input.includes("明天")){
+    range = "tomorrow";
+    day += 1;
+    input = input.replace("明天","").trim();
+  }
+  else {
+    const dateMatch = input.match(/(\d{1,2})(\/|月)(\d{1,2})(日)?/);
+
+    if(dateMatch){
+      month = Number(dateMatch[1]) - 1;
+      day = Number(dateMatch[3]);
+      range = "date";
+      input = input.replace(dateMatch[0],"").trim();
+    }
+  }
+
+  date = formatDateOnly(new Date(year, month, day));
+
+  // 時間
+  const timeMatch = input.match(
+    /(凌晨|早上|上午|中午|下午|晚上)?\s*(\d{1,2})點(半|(\d{1,2})分?)?/
+  );
+
+  if(timeMatch){
+    let period = timeMatch[1] || "";
+    let hour = Number(timeMatch[2]);
+    let minute = 0;
+
+    if(timeMatch[3] === "半"){
+      minute = 30;
+    }
+    else if(timeMatch[4]){
+      minute = Number(timeMatch[4]);
+    }
+
+    if((period === "下午" || period === "晚上") && hour < 12){
+      hour += 12;
+    }
+
+    if(period === "中午" && hour < 12){
+      hour += 12;
+    }
+
+    if(period === "凌晨" && hour === 12){
+      hour = 0;
+    }
+
+    time =
+      String(hour).padStart(2,"0") +
+      ":" +
+      String(minute).padStart(2,"0");
+
+    input = input.replace(timeMatch[0],"").trim();
+  }
+
+  return {
+    range,
+    keyword: input,
+    date,
+    time
+  };
+
+}
+
   let input =
     text.trim();
 
