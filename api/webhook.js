@@ -74,9 +74,10 @@ export default async function handler(req, res) {
 
 
       await reply(
-        replyToken,
-        result.message || "刪除完成"
-      );
+  replyToken,
+  result.message ||
+  JSON.stringify(result.events)
+);
 
 
       return res
