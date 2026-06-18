@@ -110,9 +110,17 @@ export default async function handler(req, res) {
 
             body:
               JSON.stringify({
-                action:"query",
-                text
-              })
+
+  action:"query",
+
+  range:
+    text.includes("明天")
+    ? "tomorrow"
+    : text.includes("本週")
+    ? "week"
+    : "today"
+
+})
 
           }
         );
