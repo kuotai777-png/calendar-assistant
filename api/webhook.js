@@ -1,32 +1,32 @@
 import { parseSchedule, parseDelete } from "../utils/parser.js";
 
-// 🚀 新增：利用 Gemini 進行「聽懂人話」的語意分析模組
+// 🚀 修正：轉為「個人數位助理」的語意分析模組
 async function analyzeIntentWithAI(text) {
   const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) return null; // 如果沒設定 API Key，自動切回舊的關鍵字模式
+  if (!apiKey) return null; 
 
   const today = new Date();
   const dateString = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
   const days = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
   const dayString = days[today.getDay()];
 
-  const prompt = `你是一個班級行事曆助手的意圖解析核心。今天日期是 ${dateString} (${dayString})。
-請精準分析使用者輸入的這句話：「${text}」
+  const prompt = `你是一個高效個人行事曆秘書的意圖解析核心。今天日期是 ${dateString} (${dayString})。
+使用者是這個行事曆的主人，請精準分析主人下達的個人行程指令：「${text}」
 
 請嚴格返回以下格式的 JSON 物件，不要包含任何額外的說明文字或 Markdown 標記：
 {
   "action": "query" | "delete" | "add" | "chat",
   "range": "today" | "tomorrow" | "week" | "date" | null,
   "date": "MM/DD格式" 或 null,
-  "replyMessage": "僅在 action 為 chat 時填寫溫暖的回覆，其餘留空"
+  "replyMessage": "僅在 action 為 chat 時填寫簡短的秘書回覆，其餘禮貌留空"
 }
 
 【意圖判斷規則】
-1. 查詢 (query)：只要對方想了解、確認、看某段時間的行程或活動（例如：「下禮拜有要帶什麼嗎」、「明天有事嗎」、「7/20要考試嗎」、「今天有活動嗎」、「這週的考程」）。
+1. 查詢 (query)：主人想要確認、查看自己的行程（例如：「我明天有事嗎」、「查下週二行程」、「這禮拜有排行程嗎」、「7/20有什麼事」）。
    - 請依據今天日期精準計算出 range。如果是這禮拜/下週，range 為 "week"；如果是特定日期，range 為 "date"，且必須將該日期轉換為 "MM/DD" 格式（例如 7月25日 轉為 "07/25"）。
-2. 刪除 (delete)：明確表達要刪除或取消行程（例如：「刪除明天的會議」）。
-3. 新增 (add)：明確要登記、記錄新行程（例如：「明天下午3點開會」）。
-4. 聊天 (chat)：一般的打招呼、謝謝、讚美或是無關行程的日常對話（例如：「哈囉」、「謝謝老師」、「辛苦了」）。請在 replyMessage 欄位以302班級小助手的溫暖口吻直接回覆。`;
+2. 刪除 (delete)：主人明確表達要刪除或取消某個行程（例如：「刪除明天的會議」、「取消7/20的看診」）。
+3. 新增 (add)：主人想要登記、記錄、新增一個行程（例如：「幫我記下明天下午3點開會」、「7/20 早上9點去醫院」）。
+4. 聊天 (chat)：主人一般的測試或打招呼（例如：「測試」、「哈囉」、「謝謝」）。`;
 
   try {
     const response = await fetch(
@@ -36,9 +36,7 @@ async function analyzeIntentWithAI(text) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: "application/json"
-          }
+          generationConfig: { responseMimeType: "application/json" }
         })
       }
     );
@@ -46,7 +44,7 @@ async function analyzeIntentWithAI(text) {
     const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
     return JSON.parse(jsonText);
   } catch (e) {
-    console.error("Gemini 語意解析失敗，切換回傳統模式:", e);
+    console.error("Gemini 解析失敗，切換回傳統模式:", e);
     return null;
   }
 }
@@ -65,14 +63,14 @@ export default async function handler(req, res) {
     const text = event.message.text.trim();
     const replyToken = event.replyToken;
 
-    // 🤖 啟動 AI 進行意圖過濾
+    // 🤖 啟動個人秘書 AI 進行意圖過濾
     const aiResult = await analyzeIntentWithAI(text);
 
     // ======================
-    // 溫暖日常閒聊處理 (大幅優化體驗，不再誤判為看不懂行程)
+    // 系統回應測試/簡單閒聊
     // ======================
     if (aiResult && aiResult.action === "chat") {
-      await reply(replyToken, aiResult.replyMessage || "您好！我是 302 班級小助手，隨時可以幫您查詢班級行程喔！");
+      await reply(replyToken, aiResult.replyMessage || "已就緒，隨時可以為您管理個人行程。");
       return res.status(200).end();
     }
 
@@ -97,16 +95,15 @@ export default async function handler(req, res) {
       );
 
       const result = await r.json();
-      await reply(replyToken, result.message || JSON.stringify(result.events));
+      await reply(replyToken, result.message || "已為您刪除該行程。");
       return res.status(200).end();
     }
 
     // ======================
-    // 查詢行程 (智慧語意升級版 🌟)
+    // 查詢行程
     // ======================
     if ((aiResult && aiResult.action === "query") || text.includes("行程") || text.includes("查詢")) {
       
-      // 🚀 核心優化：優先採用 AI 解析出來的範圍與日期；若 AI 失效，則自動切換回原本的硬字串比對（雙層保險）
       const rangeValue = aiResult?.range || (
         text.includes("明天") ? "tomorrow" : 
         text.includes("本週") ? "week" : 
@@ -136,15 +133,12 @@ export default async function handler(req, res) {
     }
 
     // ======================
-    // 新增行程 (原本的 fall-through 邏輯)
+    // 新增行程
     // ======================
     const schedule = parseSchedule(text);
 
     if (!schedule) {
-      await reply(
-        replyToken,
-        "我看不懂這個行程時間，請試試：\n明天下午3點 開會"
-      );
+      await reply(replyToken, "抱歉主人，我無法辨識此行程的時間格式，請試試：「明天下午3點 開會」");
       return res.status(200).end();
     }
 
@@ -152,9 +146,7 @@ export default async function handler(req, res) {
       process.env.CALENDAR_API_URL,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "add",
           ...schedule
@@ -163,7 +155,7 @@ export default async function handler(req, res) {
     );
 
     const result = await r.json();
-    await reply(replyToken, result.message || "新增完成");
+    await reply(replyToken, result.message || "行程已為您登記完成！");
     return res.status(200).end();
 
   } catch (e) {
@@ -172,9 +164,6 @@ export default async function handler(req, res) {
   }
 }
 
-// ======================
-// LINE reply 保持不變
-// ======================
 async function reply(token, text) {
   await fetch(
     "https://api.line.me/v2/bot/message/reply",
@@ -186,12 +175,7 @@ async function reply(token, text) {
       },
       body: JSON.stringify({
         replyToken: token,
-        messages: [
-          {
-            type: "text",
-            text
-          }
-        ]
+        messages: [{ type: "text", text }]
       })
     }
   );
