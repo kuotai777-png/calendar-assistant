@@ -13,7 +13,7 @@ function extractDate(text) {
   return null;
 }
 
-// 🧠 OpenRouter 免費 AI 大腦 (Llama 3)
+// 🧠 OpenRouter 免費 AI 大腦 (Llama 3.1)
 async function tryAnalyzeWithAI(text) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -69,10 +69,10 @@ async function tryAnalyzeWithAI(text) {
         "HTTP-Referer": "https://vercel.com",
         "X-Title": "LINE Calendar Bot"
       },
-body: JSON.stringify({
-  model: "google/gemma-2-9b-it:free",
-  messages: [ ... ]
-})
+      body: JSON.stringify({
+        model: "meta-llama/llama-3.1-8b-instruct:free", // ✨ 已經修正為最新的 Llama 3.1 穩定版
+        messages: [
+          {
             role: "user",
             content: prompt
           }
