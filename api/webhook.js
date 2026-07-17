@@ -30,7 +30,7 @@ async function tryAnalyzeWithAI(text) {
 {
   "action": "query" | "delete" | "add" | "update" | "chat",
   "replyMessage": "給主人溫暖親切的秘書回應（例如：好的，正在幫您登記明天下午的會議...）",
-
+  
   "query_params": {
     "range": "today" | "tomorrow" | "week" | "date" | null,
     "date": "MM/DD格式，例如 07/20" 或 null
@@ -66,14 +66,14 @@ async function tryAnalyzeWithAI(text) {
       }
     );
     const data = await response.json();
-
+    
     // 💡 【診斷核心】如果 Google 報錯，直接把完整錯誤細節印在 Vercel Logs 上！
     if (data.error) {
       console.warn("❌ Google API 拒絕了請求，詳細錯誤報告如下：");
       console.warn(JSON.stringify(data.error, null, 2)); 
       return null;
     }
-
+    
     const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!jsonText) return null;
     const cleanJson = jsonText.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -257,6 +257,7 @@ export default async function handler(req, res) {
   }
 }
 
+// 💡 修正後的 Line 回覆函數
 async function reply(token, text) {
   const lineUrl = "https://api.line.me/v2/bot/message/reply";
   await fetch(
@@ -270,6 +271,7 @@ async function reply(token, text) {
       body: JSON.stringify({
         replyToken: token,
         messages: [{ type: "text", text }]
-      }
-    );
-  }
+      })
+    }
+  );
+}
