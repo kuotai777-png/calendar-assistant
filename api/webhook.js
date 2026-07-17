@@ -13,6 +13,27 @@ function extractDate(text) {
   return null;
 }
 
+// 🛡️ 超強韌 JSON 提取器 (防範 AI 吐出雜訊文字，大幅提升系統穩定度)
+function extractJSON(text) {
+  if (!text) return null;
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch (e) {
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+      const jsonCandidate = trimmed.substring(start, end + 1);
+      try {
+        return JSON.parse(jsonCandidate);
+      } catch (err) {
+        console.warn("❌ JSON 提取解析失敗:", err);
+      }
+    }
+    return null;
+  }
+}
+
 // 🧠 OpenRouter 免費 AI 大腦 (Llama 3.3 70B)
 async function tryAnalyzeWithAI(text) {
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -36,7 +57,7 @@ async function tryAnalyzeWithAI(text) {
 請嚴格返回以下格式的 JSON 物件，不要包含任何額外的說明文字、前後問候，或 Markdown 標記（如 \`\`\`json）：
 {
   "action": "query" | "delete" | "add" | "update" | "chat",
-  "replyMessage": "給主人溫慢親切的秘書回應（例如：好的，正在幫您登記明天下午的會議...）",
+  "replyMessage": "給主人溫柔親切的秘書回應（例如：好的，正在幫您登記明天下午的會議...）",
   
   "query_params": {
     "range": "today" | "tomorrow" | "week" | "date" | null,
@@ -70,7 +91,7 @@ async function tryAnalyzeWithAI(text) {
         "X-Title": "LINE Calendar Bot"
       },
       body: JSON.stringify({
-        model: "meta-llama/llama-3.3-70b-instruct:free", // ✨ 已更換為目前穩定免費的 Llama 3.3 70B 模型
+        model: "meta-llama/llama-3.3-70b-instruct:free", // ✨ 更換為目前超級穩定、智商極高且免費的 Llama 3.3 70B
         messages: [
           {
             role: "user",
@@ -90,9 +111,7 @@ async function tryAnalyzeWithAI(text) {
     }
     
     const jsonText = data.choices?.[0]?.message?.content;
-    if (!jsonText) return null;
-    const cleanJson = jsonText.replace(/```json/g, "").replace(/```/g, "").trim();
-    return JSON.parse(cleanJson);
+    return extractJSON(jsonText);
   } catch (e) {
     console.warn("⚠️ AI 執行失敗，切換為智慧本地大腦:", e.message);
     return null;
