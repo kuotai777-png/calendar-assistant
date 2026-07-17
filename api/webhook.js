@@ -70,8 +70,7 @@ async function tryAnalyzeWithAI(text) {
         "X-Title": "LINE Calendar Bot"
       },
       body: JSON.stringify({
-        body: JSON.stringify({
-  model: "qwen/qwen-2.5-7b-instruct:free",
+  model: "google/gemma-2-9b-it:free",
   messages: [
             role: "user",
             content: prompt
