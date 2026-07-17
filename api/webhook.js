@@ -13,7 +13,7 @@ function extractDate(text) {
   return null;
 }
 
-// 🧠 OpenRouter 免費 AI 大腦 (Qwen 2.5 7B)
+// 🧠 OpenRouter 免費 AI 大腦 (Llama 3.3 70B)
 async function tryAnalyzeWithAI(text) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -70,7 +70,7 @@ async function tryAnalyzeWithAI(text) {
         "X-Title": "LINE Calendar Bot"
       },
       body: JSON.stringify({
-        model: "qwen/qwen-2.5-7b-instruct:free", // ✨ 已更換為中文解析最棒、永久免費的 Qwen 2.5
+        model: "meta-llama/llama-3.3-70b-instruct:free", // ✨ 已更換為目前穩定免費的 Llama 3.3 70B 模型
         messages: [
           {
             role: "user",
