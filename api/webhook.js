@@ -70,9 +70,9 @@ async function tryAnalyzeWithAI(text) {
         "X-Title": "LINE Calendar Bot"
       },
       body: JSON.stringify({
-        model: "meta-llama/llama-3.1-8b-instruct:free", // ✨ 已經修正為最新的 Llama 3.1 穩定版
-        messages: [
-          {
+        body: JSON.stringify({
+  model: "qwen/qwen-2.5-7b-instruct:free",
+  messages: [
             role: "user",
             content: prompt
           }
