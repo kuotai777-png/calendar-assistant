@@ -1,9 +1,12 @@
 import { parseSchedule, parseDelete } from "../utils/parser.js";
 
-// 🚀 修正：轉為「個人數位助理」的語意分析模組
+// 🚀 升級：具備錯誤診斷與文字清洗功能的 AI 模組
 async function analyzeIntentWithAI(text) {
   const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) return null; 
+  if (!apiKey) {
+    console.log("❌ 系統提示：找不到 GOOGLE_API_KEY 環境變數");
+    return null; 
+  }
 
   const today = new Date();
   const dateString = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
@@ -36,15 +39,35 @@ async function analyzeIntentWithAI(text) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json" }
+          generationConfig: { 
+            responseMimeType: "application/json" 
+          }
         })
       }
     );
+    
     const data = await response.json();
+    
+    // 🚨 診斷核心 1：如果 Gemini 报错，直接在 Vercel Logs 印出原因
+    if (data.error) {
+      console.error("❌ Gemini API 回傳錯誤:", JSON.stringify(data.error));
+      return null;
+    }
+
     const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    return JSON.parse(jsonText);
+    
+    // 🚨 診斷核心 2：如果找不到 candidates，把整包內容印出來看是什麼鬼
+    if (!jsonText) {
+      console.error("❌ Gemini 沒有回傳文字，完整回應內容為:", JSON.stringify(data));
+      return null;
+    }
+
+    // 🧼 清洗核心：拿掉可能干擾 JSON 解析的 Markdown 標籤 ```json
+    const cleanJson = jsonText.replace(/```json/g, "").replace(/```/g, "").trim();
+    return JSON.parse(cleanJson);
+    
   } catch (e) {
-    console.error("Gemini 解析失敗，切換回傳統模式:", e);
+    console.error("❌ Gemini 語意解析發生非預期崩潰:", e);
     return null;
   }
 }
@@ -63,7 +86,7 @@ export default async function handler(req, res) {
     const text = event.message.text.trim();
     const replyToken = event.replyToken;
 
-    // 🤖 啟動個人秘書 AI 進行意圖過濾
+    // 🤖 啟動秘書大腦
     const aiResult = await analyzeIntentWithAI(text);
 
     // ======================
@@ -166,7 +189,7 @@ export default async function handler(req, res) {
 
 async function reply(token, text) {
   await fetch(
-    "https://api.line.me/v2/bot/message/reply",
+    "[https://api.line.me/v2/bot/message/reply](https://api.line.me/v2/bot/message/reply)",
     {
       method: "POST",
       headers: {
