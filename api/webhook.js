@@ -1,12 +1,9 @@
 import { parseSchedule, parseDelete } from "../utils/parser.js";
 
-// 🚀 升級：具備錯誤診斷與文字清洗功能的 AI 模組
-async function analyzeIntentWithAI(text) {
+// 🧠 安全的 AI 輔助解析（失敗時不崩潰，默默返回 null）
+async function tryAnalyzeWithAI(text) {
   const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
-    console.log("❌ 系統提示：找不到 GOOGLE_API_KEY 環境變數");
-    return null; 
-  }
+  if (!apiKey) return null;
 
   const today = new Date();
   const dateString = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
@@ -39,35 +36,21 @@ async function analyzeIntentWithAI(text) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { 
-            responseMimeType: "application/json" 
-          }
+          generationConfig: { responseMimeType: "application/json" }
         })
       }
     );
-    
     const data = await response.json();
-    
-    // 🚨 診斷核心 1：如果 Gemini 报错，直接在 Vercel Logs 印出原因
     if (data.error) {
-      console.error("❌ Gemini API 回傳錯誤:", JSON.stringify(data.error));
+      console.warn("⚠️ Gemini API 暫不可用 (Quota 或 Key 問題)，切換回本地 parser。");
       return null;
     }
-
     const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    
-    // 🚨 診斷核心 2：如果找不到 candidates，把整包內容印出來看是什麼鬼
-    if (!jsonText) {
-      console.error("❌ Gemini 沒有回傳文字，完整回應內容為:", JSON.stringify(data));
-      return null;
-    }
-
-    // 🧼 清洗核心：拿掉可能干擾 JSON 解析的 Markdown 標籤 ```json
+    if (!jsonText) return null;
     const cleanJson = jsonText.replace(/```json/g, "").replace(/```/g, "").trim();
     return JSON.parse(cleanJson);
-    
   } catch (e) {
-    console.error("❌ Gemini 語意解析發生非預期崩潰:", e);
+    console.warn("⚠️ Gemini 執行失敗，默默切換回本地 parser:", e.message);
     return null;
   }
 }
@@ -86,21 +69,22 @@ export default async function handler(req, res) {
     const text = event.message.text.trim();
     const replyToken = event.replyToken;
 
-    // 🤖 啟動秘書大腦
-    const aiResult = await analyzeIntentWithAI(text);
+    // 🤖 嘗試取得 AI 解析結果 (僅作為輔助，失敗時不影響原有系統運作)
+    const aiResult = await tryAnalyzeWithAI(text);
 
-    // ======================
-    // 系統回應測試/簡單閒聊
-    // ======================
+    // ==========================================
+    // 系統回應測試 (僅在 AI 活著且判斷為聊天時觸發)
+    // ==========================================
     if (aiResult && aiResult.action === "chat") {
       await reply(replyToken, aiResult.replyMessage || "已就緒，隨時可以為您管理個人行程。");
       return res.status(200).end();
     }
 
-    // ======================
-    // 刪除行程
-    // ======================
-    if (text.startsWith("刪除") || text.startsWith("删除") || (aiResult && aiResult.action === "delete")) {
+    // ==========================================
+    // 1. 刪除行程 (AI 判斷或傳統關鍵字判斷)
+    // ==========================================
+    const isDelete = (aiResult && aiResult.action === "delete") || text.startsWith("刪除") || text.startsWith("删除");
+    if (isDelete) {
       const del = parseDelete(text);
       const r = await fetch(
         process.env.CALENDAR_API_URL,
@@ -109,10 +93,10 @@ export default async function handler(req, res) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "delete",
-            keyword: del.keyword,
-            range: del.range,
-            date: del.date,
-            time: del.time
+            keyword: del?.keyword || text.replace(/刪除|删除/g, "").trim(),
+            range: del?.range || null,
+            date: del?.date || null,
+            time: del?.time || null
           })
         }
       );
@@ -122,20 +106,34 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // ======================
-    // 查詢行程
-    // ======================
-    if ((aiResult && aiResult.action === "query") || text.includes("行程") || text.includes("查詢")) {
+    // ==========================================
+    // 2. 查詢行程 (AI 判斷或傳統關鍵字、時間詞判斷)
+    // ==========================================
+    const isQuery = (aiResult && aiResult.action === "query") || 
+                    text.includes("行程") || 
+                    text.includes("查詢") || 
+                    text.includes("今天") || 
+                    text.includes("明天") || 
+                    text.includes("本週") || 
+                    text.includes("下週");
+
+    if (isQuery) {
+      // 優先採用 AI 聰明的日期解析，若 AI 掛掉則使用原有的本地正則表達式
+      let rangeValue = aiResult?.range;
+      let dateValue = aiResult?.date;
+
+      if (!rangeValue) {
+        rangeValue = text.includes("明天") ? "tomorrow" : 
+                     (text.includes("本週") || text.includes("下週")) ? "week" : "today";
+      }
       
-      const rangeValue = aiResult?.range || (
-        text.includes("明天") ? "tomorrow" : 
-        text.includes("本週") ? "week" : 
-        text.match(/\d{1,2}\/\d{1,2}/) ? "date" : "today"
-      );
-      
-      const dateValue = aiResult?.date || (
-        text.match(/\d{1,2}\/\d{1,2}/) ? text.match(/\d{1,2}\/\d{1,2}/)[0] : null
-      );
+      if (!dateValue) {
+        const dateMatch = text.match(/(\d{1,2})\/(\d{1,2})/);
+        if (dateMatch) {
+          rangeValue = "date";
+          dateValue = `${dateMatch[1].padStart(2, '0')}/${dateMatch[2].padStart(2, '0')}`;
+        }
+      }
 
       const r = await fetch(
         process.env.CALENDAR_API_URL,
@@ -155,41 +153,46 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // ======================
-    // 新增行程
-    // ======================
+    // ==========================================
+    // 3. 新增行程 (預設或本地 Parser 解析成功)
+    // ==========================================
     const schedule = parseSchedule(text);
 
-    if (!schedule) {
-      await reply(replyToken, "抱歉主人，我無法辨識此行程的時間格式，請試試：「明天下午3點 開會」");
+    if (schedule) {
+      const r = await fetch(
+        process.env.CALENDAR_API_URL,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "add",
+            ...schedule
+          })
+        }
+      );
+
+      const result = await r.json();
+      await reply(replyToken, result.message || "行程已為您登記完成！");
       return res.status(200).end();
     }
 
-    const r = await fetch(
-      process.env.CALENDAR_API_URL,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "add",
-          ...schedule
-        })
-      }
-    );
-
-    const result = await r.json();
-    await reply(replyToken, result.message || "行程已為您登記完成！");
+    // ==========================================
+    // 4. 兜底回應 (完全看不懂時)
+    // ==========================================
+    await reply(replyToken, "抱歉主人，我無法辨識此行程格式，請試試：「明天下午3點 開會」");
     return res.status(200).end();
 
   } catch (e) {
-    console.log(e);
+    console.error("❌ 系統非預期出錯，已攔截避免崩潰:", e);
     return res.status(200).end();
   }
 }
 
 async function reply(token, text) {
+  // 修正：徹底還原最乾淨的 LINE API 網址，去除任何可能干擾的 Markdown 格式
+  const lineUrl = "https://api.line.me/v2/bot/message/reply";
   await fetch(
-    "[https://api.line.me/v2/bot/message/reply](https://api.line.me/v2/bot/message/reply)",
+    lineUrl,
     {
       method: "POST",
       headers: {
@@ -203,4 +206,3 @@ async function reply(token, text) {
     }
   );
 }
-//測試上線
