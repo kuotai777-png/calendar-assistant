@@ -1,5 +1,18 @@
 import { parseSchedule, parseDelete } from "../utils/parser.js";
 
+// 📅 智慧型本地日期提取器 (支援 7/20, 7-20, 7月20號, 7月20日)
+function extractDate(text) {
+  const slashMatch = text.match(/(\d{1,2})[\/\-](\d{1,2})/);
+  if (slashMatch) {
+    return `${slashMatch[1].padStart(2, '0')}/${slashMatch[2].padStart(2, '0')}`;
+  }
+  const cnMatch = text.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*[號日]?/);
+  if (cnMatch) {
+    return `${cnMatch[1].padStart(2, '0')}/${cnMatch[2].padStart(2, '0')}`;
+  }
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(200).send("OK");
@@ -15,7 +28,7 @@ export default async function handler(req, res) {
     const replyToken = event.replyToken;
 
     // ==========================================
-    // 1. 刪除行程 (完全回到原本的本地 parser)
+    // 1. 刪除行程
     // ==========================================
     if (text.startsWith("刪除") || text.startsWith("删除")) {
       const del = parseDelete(text);
@@ -40,8 +53,9 @@ export default async function handler(req, res) {
     }
 
     // ==========================================
-    // 2. 查詢行程 (完全回到原本的本地關鍵字與格式判斷)
+    // 2. 查詢行程 (智慧型語意模糊匹配)
     // ==========================================
+    const hasDate = extractDate(text) !== null;
     const isQuery = text.includes("行程") || 
                     text.includes("查詢") || 
                     text.includes("今天") || 
@@ -49,23 +63,23 @@ export default async function handler(req, res) {
                     text.includes("本週") || 
                     text.includes("下週") ||
                     text.includes("這禮拜") ||
-                    text.match(/\d{1,2}\/\d{1,2}/);
+                    text.includes("看看") ||
+                    text.includes("有事") ||
+                    text.includes("事情") ||
+                    text.includes("安排") ||
+                    text.includes("課") ||
+                    hasDate;
 
     if (isQuery) {
       let rangeValue = "today";
-      let dateValue = null;
+      let dateValue = extractDate(text);
 
-      if (text.includes("明天")) {
+      if (dateValue) {
+        rangeValue = "date";
+      } else if (text.includes("明天")) {
         rangeValue = "tomorrow";
       } else if (text.includes("本週") || text.includes("下週") || text.includes("這禮拜")) {
         rangeValue = "week";
-      } else {
-        // 傳統的斜線日期判斷 (例如 7/20)
-        const dateMatch = text.match(/(\d{1,2})\/(\d{1,2})/);
-        if (dateMatch) {
-          rangeValue = "date";
-          dateValue = `${dateMatch[1].padStart(2, '0')}/${dateMatch[2].padStart(2, '0')}`;
-        }
       }
 
       const r = await fetch(
@@ -87,7 +101,7 @@ export default async function handler(req, res) {
     }
 
     // ==========================================
-    // 3. 新增行程 (完全回到原本的本地時間格式解析)
+    // 3. 新增行程
     // ==========================================
     const schedule = parseSchedule(text);
 
@@ -110,7 +124,7 @@ export default async function handler(req, res) {
     }
 
     // ==========================================
-    // 4. 兜底回應 (當格式完全不符時)
+    // 4. 兜底回應 (完全看不懂時)
     // ==========================================
     await reply(replyToken, "抱歉主人，我無法辨識此行程格式，請試試：「明天下午3點 開會」");
     return res.status(200).end();
@@ -122,7 +136,6 @@ export default async function handler(req, res) {
 }
 
 async function reply(token, text) {
-  // 修正：徹底還原最乾淨的 LINE API 網址字串，杜絕任何 Markdown 格式干擾
   const lineUrl = "https://api.line.me/v2/bot/message/reply";
   await fetch(
     lineUrl,
