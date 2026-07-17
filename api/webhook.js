@@ -13,10 +13,17 @@ function extractDate(text) {
   return null;
 }
 
-// 🧠 智慧 AI 語意解析 (加入詳細錯誤 log 診斷)
+// 🧠 智慧 AI 語意解析 (加入金鑰照妖鏡與詳細錯誤 log 診斷)
 async function tryAnalyzeWithAI(text) {
   const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.warn("⚠️ 系統完全找不到 GOOGLE_API_KEY 環境變數！");
+    return null;
+  }
+
+  // 🔍 【金鑰照妖鏡】印出安全遮蔽後的金鑰，確認 Vercel 到底讀到哪一把
+  const maskedKey = `${apiKey.substring(0, 8)}...${apiKey.slice(-4)}`;
+  console.log(`🔑 Vercel 目前正在使用的金鑰是: [ ${maskedKey} ]`);
 
   const today = new Date();
   const dateString = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
@@ -257,7 +264,7 @@ export default async function handler(req, res) {
   }
 }
 
-// 💡 修正後的 Line 回覆函數
+// Line 回覆函數
 async function reply(token, text) {
   const lineUrl = "https://api.line.me/v2/bot/message/reply";
   await fetch(
