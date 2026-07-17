@@ -1,3 +1,4 @@
+// 2026-07-17 終極測試
 import { parseSchedule, parseDelete } from "../utils/parser.js";
 
 // 📅 智慧型本地日期提取器 (當 AI 熔斷時的兜底備份)
