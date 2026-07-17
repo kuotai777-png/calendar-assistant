@@ -69,10 +69,10 @@ async function tryAnalyzeWithAI(text) {
         "HTTP-Referer": "https://vercel.com",
         "X-Title": "LINE Calendar Bot"
       },
-      body: JSON.stringify({
-        model: "meta-llama/llama-3-8b-instruct:free",
-        messages: [
-          {
+body: JSON.stringify({
+  model: "meta-llama/llama-3.1-8b-instruct:free",
+  messages: [ ... ]
+})
             role: "user",
             content: prompt
           }
