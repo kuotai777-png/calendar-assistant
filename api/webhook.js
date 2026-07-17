@@ -1,4 +1,3 @@
-// 2026-07-17 終極測試
 import { parseSchedule, parseDelete } from "../utils/parser.js";
 
 // 📅 智慧型本地日期提取器 (當 AI 熔斷時的兜底備份)
@@ -14,7 +13,7 @@ function extractDate(text) {
   return null;
 }
 
-// 🧠 智慧 AI 語意解析 (失敗時會自動、默默地返回 null，不影響系統)
+// 🧠 智慧 AI 語意解析 (加入詳細錯誤 log 診斷)
 async function tryAnalyzeWithAI(text) {
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) return null;
@@ -31,7 +30,7 @@ async function tryAnalyzeWithAI(text) {
 {
   "action": "query" | "delete" | "add" | "update" | "chat",
   "replyMessage": "給主人溫暖親切的秘書回應（例如：好的，正在幫您登記明天下午的會議...）",
-  
+
   "query_params": {
     "range": "today" | "tomorrow" | "week" | "date" | null,
     "date": "MM/DD格式，例如 07/20" 或 null
@@ -67,10 +66,14 @@ async function tryAnalyzeWithAI(text) {
       }
     );
     const data = await response.json();
+
+    // 💡 【診斷核心】如果 Google 報錯，直接把完整錯誤細節印在 Vercel Logs 上！
     if (data.error) {
-      console.warn("⚠️ Gemini 額度或金鑰暫不可用，默默切換為智慧本地大腦。");
+      console.warn("❌ Google API 拒絕了請求，詳細錯誤報告如下：");
+      console.warn(JSON.stringify(data.error, null, 2)); 
       return null;
     }
+
     const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!jsonText) return null;
     const cleanJson = jsonText.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -95,7 +98,7 @@ export default async function handler(req, res) {
     const text = event.message.text.trim();
     const replyToken = event.replyToken;
 
-    // 🤖 嘗試呼叫 AI 進行神經網路語意解析
+    // 🤖 嘗試呼叫 AI
     const ai = await tryAnalyzeWithAI(text);
 
     if (ai) {
@@ -173,7 +176,7 @@ export default async function handler(req, res) {
     }
 
     // ------------------------------------------
-    // 【智慧本地 2.0 備份大腦】(AI 熔斷或不可用時無縫接管)
+    // 【智慧本地 2.0 備份大腦】
     // ------------------------------------------
     console.log("⚡ 啟動智慧本地 2.0 備份大腦解析行程...");
 
@@ -267,7 +270,6 @@ async function reply(token, text) {
       body: JSON.stringify({
         replyToken: token,
         messages: [{ type: "text", text }]
-      })
-    }
-  );
-}
+      }
+    );
+  }
