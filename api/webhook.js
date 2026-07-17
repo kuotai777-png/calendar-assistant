@@ -1,6 +1,6 @@
 import { parseSchedule, parseDelete } from "../utils/parser.js";
 
-// 📅 智慧型本地日期提取器 (當 AI 熔斷時的兜底備份)
+// 📅 智慧型本地日期提取器 (當 AI 熔斷時的備份)
 function extractDate(text) {
   const slashMatch = text.match(/(\d{1,2})[\/\-](\d{1,2})/);
   if (slashMatch) {
@@ -13,17 +13,17 @@ function extractDate(text) {
   return null;
 }
 
-// 🧠 智慧 AI 語意解析 (加入金鑰照妖鏡與詳細錯誤 log 診斷)
+// 🧠 OpenRouter 免費 AI 大腦 (Llama 3)
 async function tryAnalyzeWithAI(text) {
-  const apiKey = process.env.GOOGLE_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    console.warn("⚠️ 系統完全找不到 GOOGLE_API_KEY 環境變數！");
+    console.warn("⚠️ 系統找不到 OPENROUTER_API_KEY 環境變數！");
     return null;
   }
 
-  // 🔍 【金鑰照妖鏡】印出安全遮蔽後的金鑰，確認 Vercel 到底讀到哪一把
-  const maskedKey = `${apiKey.substring(0, 8)}...${apiKey.slice(-4)}`;
-  console.log(`🔑 Vercel 目前正在使用的金鑰是: [ ${maskedKey} ]`);
+  // 🔑 金鑰照妖鏡
+  const maskedKey = `${apiKey.substring(0, 10)}...${apiKey.slice(-4)}`;
+  console.log(`🔑 目前正在使用的 OpenRouter 金鑰是: [ ${maskedKey} ]`);
 
   const today = new Date();
   const dateString = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
@@ -33,10 +33,10 @@ async function tryAnalyzeWithAI(text) {
   const prompt = `你是一個高效個人行事曆秘書的意圖解析核心。今天日期是 ${dateString} (${dayString})。
 使用者是這個行事曆的主人，請精準分析主人下達的口語指令：「${text}」
 
-請嚴格返回以下格式的 JSON 物件，不要包含任何額外的說明文字或 Markdown 標記（如 \`\`\`json）：
+請嚴格返回以下格式的 JSON 物件，不要包含任何額外的說明文字、前後問候，或 Markdown 標記（如 \`\`\`json）：
 {
   "action": "query" | "delete" | "add" | "update" | "chat",
-  "replyMessage": "給主人溫暖親切的秘書回應（例如：好的，正在幫您登記明天下午的會議...）",
+  "replyMessage": "給主人溫慢親切的秘書回應（例如：好的，正在幫您登記明天下午的會議...）",
   
   "query_params": {
     "range": "today" | "tomorrow" | "week" | "date" | null,
@@ -61,32 +61,40 @@ async function tryAnalyzeWithAI(text) {
 }`;
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json" }
-        })
-      }
-    );
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://vercel.com",
+        "X-Title": "LINE Calendar Bot"
+      },
+      body: JSON.stringify({
+        model: "meta-llama/llama-3-8b-instruct:free",
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.1
+      })
+    });
+
     const data = await response.json();
     
-    // 💡 【診斷核心】如果 Google 報錯，直接把完整錯誤細節印在 Vercel Logs 上！
     if (data.error) {
-      console.warn("❌ Google API 拒絕了請求，詳細錯誤報告如下：");
+      console.warn("❌ OpenRouter API 報錯了：");
       console.warn(JSON.stringify(data.error, null, 2)); 
       return null;
     }
     
-    const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const jsonText = data.choices?.[0]?.message?.content;
     if (!jsonText) return null;
     const cleanJson = jsonText.replace(/```json/g, "").replace(/```/g, "").trim();
     return JSON.parse(cleanJson);
   } catch (e) {
-    console.warn("⚠️ AI 執行失敗，默默切換為智慧本地大腦:", e.message);
+    console.warn("⚠️ AI 執行失敗，切換為智慧本地大腦:", e.message);
     return null;
   }
 }
@@ -109,9 +117,6 @@ export default async function handler(req, res) {
     const ai = await tryAnalyzeWithAI(text);
 
     if (ai) {
-      // ------------------------------------------
-      // 【AI 模式分支】
-      // ------------------------------------------
       if (ai.action === "chat") {
         await reply(replyToken, ai.replyMessage || "已就緒，隨時為您管理行程。");
         return res.status(200).end();
@@ -187,7 +192,6 @@ export default async function handler(req, res) {
     // ------------------------------------------
     console.log("⚡ 啟動智慧本地 2.0 備份大腦解析行程...");
 
-    // 1. 本地刪除
     if (text.startsWith("刪除") || text.startsWith("删除")) {
       const del = parseDelete(text);
       const r = await fetch(process.env.CALENDAR_API_URL, {
@@ -206,7 +210,6 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // 2. 本地智慧查詢
     const hasDate = extractDate(text) !== null;
     const isQuery = text.includes("行程") || text.includes("查詢") || text.includes("今天") || 
                     text.includes("明天") || text.includes("本週") || text.includes("下週") ||
@@ -238,7 +241,6 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // 3. 本地新增
     const schedule = parseSchedule(text);
     if (schedule) {
       const r = await fetch(process.env.CALENDAR_API_URL, {
@@ -254,7 +256,6 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // 4. 兜底回應
     await reply(replyToken, "抱歉主人，我無法辨識此行程格式，請試試：「明天下午3點 開會」");
     return res.status(200).end();
 
