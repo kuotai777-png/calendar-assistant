@@ -13,7 +13,7 @@ function extractDate(text) {
   return null;
 }
 
-// 🛡️ 超強韌 JSON 提取器 (防範 AI 吐出雜訊文字，大幅提升系統穩定度)
+// 🛡️ 超強韌 JSON 提取器 (防範 AI 吐出雜訊文字)
 function extractJSON(text) {
   if (!text) return null;
   const trimmed = text.trim();
@@ -34,7 +34,7 @@ function extractJSON(text) {
   }
 }
 
-// 🧠 OpenRouter 免費 AI 大腦 (Llama 3.3 70B)
+// 🧠 具備「自動備援機制」的 OpenRouter AI 大腦
 async function tryAnalyzeWithAI(text) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -42,7 +42,6 @@ async function tryAnalyzeWithAI(text) {
     return null;
   }
 
-  // 🔑 金鑰照妖鏡
   const maskedKey = `${apiKey.substring(0, 10)}...${apiKey.slice(-4)}`;
   console.log(`🔑 目前正在使用的 OpenRouter 金鑰是: [ ${maskedKey} ]`);
 
@@ -58,7 +57,6 @@ async function tryAnalyzeWithAI(text) {
 {
   "action": "query" | "delete" | "add" | "update" | "chat",
   "replyMessage": "給主人溫柔親切的秘書回應（例如：好的，正在幫您登記明天下午的會議...）",
-  
   "query_params": {
     "range": "today" | "tomorrow" | "week" | "date" | null,
     "date": "MM/DD格式，例如 07/20" 或 null
@@ -81,41 +79,48 @@ async function tryAnalyzeWithAI(text) {
   }
 }`;
 
-  try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://vercel.com",
-        "X-Title": "LINE Calendar Bot"
-      },
-      body: JSON.stringify({
-        model: "google/gemma-2-9b-it:free",
-        messages: [
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        temperature: 0.1
-      })
-    });
+  // 🏆 建立免費模型候選清單 (依優先順序自動切換)
+  const fallbackModels = [
+    "google/gemma-2-9b-it:free",          // 首選：通常最穩定
+    "meta-llama/llama-3.3-70b-instruct:free", // 備案一：很聰明但偶爾塞車
+    "qwen/qwen-2-7b-instruct:free"        // 備案二：以防萬一
+  ];
 
-    const data = await response.json();
-    
-    if (data.error) {
-      console.warn("❌ OpenRouter API 報錯了：");
-      console.warn(JSON.stringify(data.error, null, 2)); 
-      return null;
+  for (const model of fallbackModels) {
+    try {
+      console.log(`🤖 嘗試呼叫模型: ${model}...`);
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://vercel.com",
+          "X-Title": "LINE Calendar Bot"
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.1
+        })
+      });
+
+      const data = await response.json();
+      
+      // 如果這顆大腦順利回答且沒有報錯，就回傳並跳出迴圈
+      if (!data.error && data.choices?.[0]?.message?.content) {
+        console.log(`✅ 模型 ${model} 解析成功！`);
+        return extractJSON(data.choices[0].message.content);
+      } else {
+        console.warn(`⚠️ 模型 ${model} 無法處理或塞車:`, data.error || "未知錯誤");
+      }
+    } catch (e) {
+      console.warn(`❌ 模型 ${model} 連線失敗，切換下一個...`);
     }
-    
-    const jsonText = data.choices?.[0]?.message?.content;
-    return extractJSON(jsonText);
-  } catch (e) {
-    console.warn("⚠️ AI 執行失敗，切換為智慧本地大腦:", e.message);
-    return null;
   }
+  
+  // 如果三個免費模型都掛了，回傳 null 交給本地備用大腦
+  console.warn("💀 所有 AI 備援模型皆失效，即將啟動本地大腦。");
+  return null;
 }
 
 export default async function handler(req, res) {
@@ -125,14 +130,14 @@ export default async function handler(req, res) {
 
   try {
     const event = req.body.events?.[0];
-    if (!event || event.type !== "message") {
+    if (!event || event.type !== "message" || !event.message.text) {
       return res.status(200).end();
     }
 
     const text = event.message.text.trim();
     const replyToken = event.replyToken;
 
-    // 🤖 嘗試呼叫 AI
+    // 🤖 嘗試呼叫自動換手的 AI 大腦
     const ai = await tryAnalyzeWithAI(text);
 
     if (ai) {
@@ -141,73 +146,30 @@ export default async function handler(req, res) {
         return res.status(200).end();
       }
 
-      if (ai.action === "query") {
-        const r = await fetch(process.env.CALENDAR_API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "query",
-            range: ai.query_params.range,
-            date: ai.query_params.date
-          })
-        });
-        const result = await r.json();
-        await reply(replyToken, `💁‍♂️ ${ai.replyMessage}\n\n${result.message}`);
-        return res.status(200).end();
-      }
+      // 統整 API 呼叫邏輯，讓程式碼更精簡
+      let targetParams = {};
+      if (ai.action === "query") targetParams = { range: ai.query_params.range, date: ai.query_params.date };
+      if (ai.action === "delete") targetParams = { keyword: ai.delete_params.keyword, date: ai.delete_params.date, time: ai.delete_params.time };
+      if (ai.action === "add") targetParams = { title: ai.add_params.title, date: ai.add_params.date, time: ai.add_params.time };
+      if (ai.action === "update") targetParams = { 
+        old_keyword: ai.update_params.old_keyword, 
+        new_title: ai.update_params.new_title, 
+        new_date: ai.update_params.new_date, 
+        new_time: ai.update_params.new_time 
+      };
 
-      if (ai.action === "delete") {
-        const r = await fetch(process.env.CALENDAR_API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "delete",
-            keyword: ai.delete_params.keyword,
-            date: ai.delete_params.date,
-            time: ai.delete_params.time
-          })
-        });
-        const result = await r.json();
-        await reply(replyToken, `💁‍♂️ ${ai.replyMessage}\n\n${result.message}`);
-        return res.status(200).end();
-      }
-
-      if (ai.action === "add") {
-        const r = await fetch(process.env.CALENDAR_API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "add",
-            title: ai.add_params.title,
-            date: ai.add_params.date,
-            time: ai.add_params.time
-          })
-        });
-        const result = await r.json();
-        await reply(replyToken, `💁‍♂️ ${ai.replyMessage}\n\n${result.message}`);
-        return res.status(200).end();
-      }
-
-      if (ai.action === "update") {
-        const r = await fetch(process.env.CALENDAR_API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "update",
-            old_keyword: ai.update_params.old_keyword,
-            new_title: ai.update_params.new_title,
-            new_date: ai.update_params.new_date,
-            new_time: ai.update_params.new_time
-          })
-        });
-        const result = await r.json();
-        await reply(replyToken, `💁‍♂️ ${ai.replyMessage}\n\n${result.message}`);
-        return res.status(200).end();
-      }
+      const r = await fetch(process.env.CALENDAR_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: ai.action, ...targetParams })
+      });
+      const result = await r.json();
+      await reply(replyToken, `💁‍♂️ ${ai.replyMessage}\n\n${result.message}`);
+      return res.status(200).end();
     }
 
     // ------------------------------------------
-    // 【智慧本地 2.0 備份大腦】
+    // 【智慧本地 2.0 備份大腦】 (當 AI 全數陣亡時)
     // ------------------------------------------
     console.log("⚡ 啟動智慧本地 2.0 備份大腦解析行程...");
 
@@ -229,13 +191,30 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
+    // 先判斷是不是要「新增」
+    const schedule = parseSchedule(text);
+    if (schedule) {
+      const r = await fetch(process.env.CALENDAR_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "add",
+          ...schedule
+        })
+      });
+      const result = await r.json();
+      await reply(replyToken, result.message || "行程已為您登記完成！");
+      return res.status(200).end();
+    }
+
+    // 如果不是新增，才判斷是不是「查詢」
     const hasDate = extractDate(text) !== null;
     const isQuery = text.includes("行程") || text.includes("查詢") || text.includes("今天") || 
                     text.includes("明天") || text.includes("本週") || text.includes("下週") ||
                     text.includes("這禮拜") || text.includes("看看") || text.includes("有事") ||
-                    text.includes("事情") || text.includes("安排") || text.includes("課") || hasDate;
+                    text.includes("事情") || text.includes("安排");
 
-    if (isQuery) {
+    if (isQuery || hasDate) {
       let rangeValue = "today";
       let dateValue = extractDate(text);
       if (dateValue) {
@@ -257,21 +236,6 @@ export default async function handler(req, res) {
       });
       const result = await r.json();
       await reply(replyToken, result.message);
-      return res.status(200).end();
-    }
-
-    const schedule = parseSchedule(text);
-    if (schedule) {
-      const r = await fetch(process.env.CALENDAR_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "add",
-          ...schedule
-        })
-      });
-      const result = await r.json();
-      await reply(replyToken, result.message || "行程已為您登記完成！");
       return res.status(200).end();
     }
 
